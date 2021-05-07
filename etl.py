@@ -5,7 +5,8 @@ import findspark
 findspark.init()
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import udf, col
-from pyspark.sql.functions import year, month, dayofmonth, hour, weekofyear, date_format
+from pyspark.sql.functions import year, month, dayofmonth, hour, weekofyear, dayofweek
+from pyspark.sql.types import TimestampType, DateType, IntegerType
 
 
 config = configparser.ConfigParser()
@@ -27,7 +28,7 @@ def create_spark_session():
 
 def process_song_data(spark, input_data, output_data):
     """
-    Process song data to read data from S3 by input_data and write them back to S3 with output_data.
+    Read json files from S3 using input_data. Process song data. Write them back to S3 using output_data.
     Arguments:
         spark (spark instance) -- a spark instance
         input_data (string) -- a filepath for input data
@@ -62,37 +63,66 @@ def process_song_data(spark, input_data, output_data):
     # write artists table to parquet files
     artists_table.write.parquet("{}artists/artists_table.parquet".format(output_data))
 
+
 def process_log_data(spark, input_data, output_data):
-    print('process_log_data func has run')
+    """
+    Read json files from S3 using input_data. Process log data. Write them back to S3 using output_data.
+    Here with the log_data
+    Args:
+        - spark: spark session
+        - input_data_log: input data logs s3 link
+        - output_data: My own s3 bucket (set in public)
+    """
 
     # get filepath to log data file
-    # log_data =
+    log_data = "{}/log_data/*/*/*events.json".format(input_data)
 
     # read log data file
-    # df = 
+    df = spark.read.json(log_data).dropDuplicates()
     
     # filter by actions for song plays
-    # df = 
+    df = df.filter(df.page == "NextSong").cache()
 
     # extract columns for users table    
-    # artists_table = 
+    users_table = df.select(
+        col("firstName"),
+        col("lastName"),
+        col("gender"),
+        col("level"),
+        col("userId")
+    ).distinct()
     
     # write users table to parquet files
-    # artists_table
+    users_table.write.parquet("{}users/users_table.parquet".format(output_data))
 
     # create timestamp column from original timestamp column
-    # get_timestamp = udf()
-    # df = 
+    get_timestamp = udf(lambda x: datetime.fromtimestamp(x / 1000), TimestampType())
+    df = df.withColumn("timestamp", get_timestamp(col("ts"))) 
     
     # create datetime column from original timestamp column
-    # get_datetime = udf()
-    # df = 
+    get_datetime = udf(lambda x: to_date(x), TimestampType())
+    df = df.withColumn("start_time", get_timestamp(col("ts"))) 
     
     # extract columns to create time table
-    # time_table = 
+    df = df.withColumn("hour", hour("timestamp"))
+    df = df.withColumn("day", dayofmonth("timestamp"))
+    df = df.withColumn("month", month("timestamp"))
+    df = df.withColumn("year", year("timestamp"))
+    df = df.withColumn("week", weekofyear("timestamp"))
+    df = df.withColumn("weekday", dayofweek("timestamp"))
+
+    time_table = df.select(
+        col("start_time"),
+        col("hour"),
+        col("day"),
+        col("week"),
+        col("month"),
+        col("year"),
+        col("weekday")
+    ).distinct()
     
     # write time table to parquet files partitioned by year and month
-    # time_table
+    time_table.write.partitionBy("year", "month").parquet("{}time/time_table.parquet".format(output_data))
 
     # read in song data to use for songplays table
     # song_df = 
@@ -105,17 +135,16 @@ def process_log_data(spark, input_data, output_data):
 
 
 def main():
-    print('main func has run')
+    """
+    Main Function
+    """
+
     spark = create_spark_session()
     input_data = "s3a://udacity-dend/"
-    # song_data = "s3a://udacity-dend/song_data"
-    # song_data = os.path.join(input_data, 'song_data/A/A/A/*.json')
-    log_data = "s3a://udacity-dend/log_data"
     output_data = "s3a://data-lake-with-spark/sparkify/"
-
     
-    process_song_data(spark, input_data, output_data)  
-    # process_log_data(spark, log_data, output_data)
+    # process_song_data(spark, input_data, output_data)  
+    process_log_data(spark, input_data, output_data)
 
 
 if __name__ == "__main__":
