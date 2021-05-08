@@ -5,7 +5,7 @@ import findspark
 findspark.init()
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import udf, col
-from pyspark.sql.functions import year, month, dayofmonth, hour, weekofyear, dayofweek
+from pyspark.sql.functions import year, month, dayofmonth, hour, weekofyear, dayofweek, monotonically_increasing_id
 from pyspark.sql.types import TimestampType, DateType, IntegerType
 
 
@@ -125,13 +125,26 @@ def process_log_data(spark, input_data, output_data):
     time_table.write.partitionBy("year", "month").parquet("{}time/time_table.parquet".format(output_data))
 
     # read in song data to use for songplays table
-    # song_df = 
+    song_df = spark.sql("SELECT DISTINCT song_id, artist_id, artist_name FROM song_table")
 
     # extract columns from joined song and log datasets to create songplays table 
-    # songplays_table = 
+    songplays_table = df.join(song_df, song_df.artist_name == df.artist, "inner") \
+        .distinct() \
+        .select( \
+            col("start_time"), \
+            col("userId"), \
+            col("level"), \
+            col("sessionId"), \
+            col("location"), \
+            col("userAgent"), \
+            col("song_id"), \
+            col("artist_id"), \
+            col("year"), \
+            col("month")) \
+        .withColumn("songplay_id", monotonically_increasing_id())
 
     # write songplays table to parquet files partitioned by year and month
-    # songplays_table
+    songplays_table.write.partitionBy("year", "month").parquet("{}song_plays/songplays_table.parquet".format(output_data))
 
 
 def main():
@@ -143,7 +156,7 @@ def main():
     input_data = "s3a://udacity-dend/"
     output_data = "s3a://data-lake-with-spark/sparkify/"
     
-    # process_song_data(spark, input_data, output_data)  
+    process_song_data(spark, input_data, output_data)  
     process_log_data(spark, input_data, output_data)
 
 
