@@ -63,6 +63,9 @@ def process_song_data(spark, input_data, output_data):
     # write artists table to parquet files
     artists_table.write.parquet("{}artists/artists_table.parquet".format(output_data))
 
+    # Creates or replaces a local temporary view named song_table with this DataFrame
+    df.createOrReplaceTempView("song_table")
+
 
 def process_log_data(spark, input_data, output_data):
     """
